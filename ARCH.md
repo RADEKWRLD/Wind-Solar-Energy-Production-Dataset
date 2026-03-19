@@ -69,7 +69,7 @@ Wind&Solar-Energy-Production-Dataset/
 | `02_regression.py` | §任务1 — Linear/Ridge/Lasso/DecisionTree/RandomForest/XGBoost 回归对比、特征重要性、预测 vs 真实散点图 | `outputs/regression/` |
 | `03_classification.py` | §任务2 — LogisticRegression/KNN/DecisionTree/RandomForest/SVM/XGBoost 分类、`class_weight='balanced'` 不均衡处理、ROC 曲线、混淆矩阵 | `outputs/classification/` |
 | `04_clustering.py` | §任务3 — K-Means/DBSCAN/Agglomerative 聚类、肘部法则、PCA 降维散点图、聚类 vs 真实标签对比、树状图 | `outputs/clustering/` |
-| `05_time_series.py` | §任务4 — 日聚合、Wind/Solar 分别建模、SARIMA/Prophet 时序预测、时序分解图、预测曲线、残差分析、置信区间 | `outputs/time_series/` |
+| `05_time_series.py` | §任务4 — 日聚合、Wind/Solar 分别建模、SARIMA/Prophet/LSTM/Transformer 时序预测、时序分解图、预测曲线、残差分析、置信区间 | `outputs/time_series/` |
 
 ---
 
@@ -100,4 +100,5 @@ scikit-learn            — 回归、分类、聚类、评估
 xgboost                 — 梯度提升模型
 statsmodels             — SARIMA 时间序列
 prophet                 — Facebook Prophet 时间序列预测
+torch (PyTorch)         — LSTM、Transformer 深度学习模型
 ```

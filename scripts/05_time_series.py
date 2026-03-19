@@ -5,7 +5,7 @@
 
 数据准备：每小时 → 按日聚合，Wind/Solar 分别建模
 训练集：2020~2024 | 测试集：2025
-模型：ARIMA / SARIMA / Prophet / LSTM（可选）
+模型：SARIMA / Prophet / LSTM / Transformer
 评估：MSE、RMSE、MAPE
 
 可视化清单：
@@ -24,6 +24,11 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings("ignore")
 
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader as TorchDataLoader, TensorDataset
+from sklearn.preprocessing import MinMaxScaler
+
 from statsmodels.tsa.seasonal import seasonal_decompose
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from prophet import Prophet
@@ -32,12 +37,100 @@ from src.data_loader import DataLoader
 from src.evaluation import regression_metrics
 from src.visualization import setup_plot_style, save_fig
 
+DEVICE = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+SEQ_LEN = 30  # 用过去30天预测下一天
+EPOCHS = 80
+BATCH_SIZE = 32
+LR = 1e-3
+
 
 def mape(y_true, y_pred):
     """计算 MAPE"""
     y_true, y_pred = np.array(y_true), np.array(y_pred)
     mask = y_true != 0
     return np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100
+
+
+class LSTMModel(nn.Module):
+    def __init__(self, input_size=1, hidden_size=64, num_layers=2, dropout=0.2):
+        super().__init__()
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers,
+                            batch_first=True, dropout=dropout)
+        self.fc = nn.Linear(hidden_size, 1)
+
+    def forward(self, x):
+        out, _ = self.lstm(x)
+        return self.fc(out[:, -1, :])
+
+
+class TransformerModel(nn.Module):
+    def __init__(self, input_size=1, d_model=64, nhead=4, num_layers=2, dropout=0.2):
+        super().__init__()
+        self.input_proj = nn.Linear(input_size, d_model)
+        self.pos_enc = nn.Parameter(torch.randn(1, SEQ_LEN, d_model) * 0.01)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model, nhead=nhead, dim_feedforward=128,
+            dropout=dropout, batch_first=True
+        )
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.fc = nn.Linear(d_model, 1)
+
+    def forward(self, x):
+        x = self.input_proj(x) + self.pos_enc
+        x = self.encoder(x)
+        return self.fc(x[:, -1, :])
+
+
+def create_sequences(data, seq_len):
+    """将一维序列转为 (X, y) 滑窗样本"""
+    X, y = [], []
+    for i in range(len(data) - seq_len):
+        X.append(data[i:i + seq_len])
+        y.append(data[i + seq_len])
+    return np.array(X), np.array(y)
+
+
+def train_torch_model(model, train_series, test_series, model_name):
+    """通用 PyTorch 模型训练 + 预测流程"""
+    scaler = MinMaxScaler()
+    train_scaled = scaler.fit_transform(train_series.values.reshape(-1, 1)).flatten()
+    full_scaled = scaler.transform(
+        np.concatenate([train_series.values, test_series.values]).reshape(-1, 1)
+    ).flatten()
+
+    X_train, y_train = create_sequences(train_scaled, SEQ_LEN)
+    X_train = torch.FloatTensor(X_train).unsqueeze(-1).to(DEVICE)
+    y_train = torch.FloatTensor(y_train).unsqueeze(-1).to(DEVICE)
+
+    dataset = TensorDataset(X_train, y_train)
+    loader = TorchDataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+
+    model = model.to(DEVICE)
+    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+    criterion = nn.MSELoss()
+
+    model.train()
+    for epoch in range(EPOCHS):
+        for xb, yb in loader:
+            optimizer.zero_grad()
+            loss = criterion(model(xb), yb)
+            loss.backward()
+            optimizer.step()
+
+    # 滚动预测测试集
+    model.eval()
+    preds = []
+    # 用训练集最后 SEQ_LEN 天作为初始窗口
+    window = list(train_scaled[-SEQ_LEN:])
+    with torch.no_grad():
+        for _ in range(len(test_series)):
+            x = torch.FloatTensor([window[-SEQ_LEN:]]).unsqueeze(-1).to(DEVICE)
+            pred = model(x).cpu().item()
+            preds.append(pred)
+            window.append(pred)
+
+    preds = scaler.inverse_transform(np.array(preds).reshape(-1, 1)).flatten()
+    return preds
 
 
 def forecast_source(df_source, source_name):
@@ -114,6 +207,34 @@ def forecast_source(df_source, source_name):
     except Exception as e:
         print(f"Prophet 失败: {e}")
 
+    #LSTM
+    print(f"\n训练 LSTM ({source_name})...")
+    try:
+        lstm_model = LSTMModel(input_size=1, hidden_size=64, num_layers=2)
+        lstm_preds = train_torch_model(lstm_model, train["Production"], test["Production"], "LSTM")
+        lstm_pred_series = pd.Series(lstm_preds, index=test.index)
+
+        metrics = regression_metrics(test["Production"], lstm_pred_series)
+        metrics["MAPE"] = mape(test["Production"], lstm_preds)
+        results["LSTM"] = {"pred": lstm_pred_series, "metrics": metrics}
+        print(f"LSTM: {metrics}")
+    except Exception as e:
+        print(f"LSTM 失败: {e}")
+
+    #Transformer
+    print(f"\n训练 Transformer ({source_name})...")
+    try:
+        transformer_model = TransformerModel(input_size=1, d_model=64, nhead=4, num_layers=2)
+        transformer_preds = train_torch_model(transformer_model, train["Production"], test["Production"], "Transformer")
+        transformer_pred_series = pd.Series(transformer_preds, index=test.index)
+
+        metrics = regression_metrics(test["Production"], transformer_pred_series)
+        metrics["MAPE"] = mape(test["Production"], transformer_preds)
+        results["Transformer"] = {"pred": transformer_pred_series, "metrics": metrics}
+        print(f"Transformer: {metrics}")
+    except Exception as e:
+        print(f"Transformer 失败: {e}")
+
     if not results:
         print(f"{source_name}: 所有模型都失败了")
         return
@@ -121,7 +242,7 @@ def forecast_source(df_source, source_name):
     #图2: 预测曲线 vs 实际曲线
     fig, ax = plt.subplots(figsize=(14, 6))
     ax.plot(test.index, test["Production"], label="实际值", color="black", linewidth=1.5)
-    colors = ["blue", "red", "green"]
+    colors = ["blue", "red", "green", "orange", "purple"]
     for idx, (name, data) in enumerate(results.items()):
         ax.plot(test.index, data["pred"], label=f"{name}", color=colors[idx], alpha=0.7)
     ax.set_xlabel("日期")
