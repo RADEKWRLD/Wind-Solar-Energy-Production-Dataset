@@ -12,6 +12,10 @@ import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+#项目根目录
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 #统一图表风格设置
 def setup_plot_style():
     sns.set_style("whitegrid")
@@ -22,10 +26,12 @@ def setup_plot_style():
     plt.rcParams["ytick.labelsize"] = 12
     plt.rcParams["legend.fontsize"] = 12
 
+
 #自动保存图表到对应 outputs/ 子目录
 def save_fig(fig, filename, subdir="general"):
-    output_dir = os.path.join("outputs", subdir)
+    output_dir = os.path.join(BASE_DIR, "outputs", subdir)
     os.makedirs(output_dir, exist_ok=True)
     save_path = os.path.join(output_dir, filename)
     fig.savefig(save_path, bbox_inches='tight')
+    plt.close(fig)
     print(f"图表已保存到 {save_path}")
