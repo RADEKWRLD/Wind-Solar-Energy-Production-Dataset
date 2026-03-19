@@ -8,8 +8,11 @@
 """
 import numpy as np
 import pandas as pd
+import os
+from src.utils.singleton import Singleton
 
 #特征工程类
+@Singleton
 class FeatureEngineer:
     def __init__(self,data):
         self.data = data

@@ -10,7 +10,7 @@
 import pandas as pd
 import os 
 import numpy as np
-from utils.singleton import Singleton
+from src.utils.singleton import Singleton
 
 #数据清洗类
 @Singleton

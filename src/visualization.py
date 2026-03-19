@@ -19,6 +19,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #统一图表风格设置
 def setup_plot_style():
     sns.set_style("whitegrid")
+    plt.rcParams["font.sans-serif"] = ["PingFang SC", "Heiti TC", "SimHei", "Arial Unicode MS"]
+    plt.rcParams["axes.unicode_minus"] = False
     plt.rcParams["figure.figsize"] = (10, 6)
     plt.rcParams["axes.titlesize"] = 16
     plt.rcParams["axes.labelsize"] = 14

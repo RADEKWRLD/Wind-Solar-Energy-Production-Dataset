@@ -1,7 +1,6 @@
 .venv
 datasets/*
 logs/*
-outputs/*
 __pycache__/
 *.pyc
 *.pyo
