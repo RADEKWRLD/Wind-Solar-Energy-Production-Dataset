@@ -43,7 +43,7 @@ def main():
     y = df["Production"]
 
     #共用的数值特征,可以不做处理
-    common_cols = ["Hour_Sin", "Hour_Cos", "Day_Sin", "Day_Cos", "Month"]
+    common_cols = ["Hour_Sin", "Hour_Cos", "DayOfYear_Sin", "DayOfYear_Cos", "Month", "Quarter", "IsWeekend"]
 
     #其实都用 label 都可以，但是我为了数据的严谨性就用了两套编码，线性模型用 onehot，树模型用 label，这样更符合实际项目中的做法
     #Label 编码数据（给树模型用）
